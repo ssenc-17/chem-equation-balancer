@@ -4,6 +4,7 @@ from tkinter import messagebox
 from sympy import Matrix, lcm
 
 SUBSCRIPT_MAP = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+REVERSE_SUBSCRIPT_MAP = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
 
 VALID_ELEMENTS = {
     "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
@@ -66,6 +67,8 @@ def parse_equation(reactants, products):
     return reactants_list, products_list
 
 def count_atoms(formula):
+    formula = formula.translate(REVERSE_SUBSCRIPT_MAP)
+
     if not check_parentheses(formula):
         raise ValueError(f"missing parentheses in {formula}")
     
