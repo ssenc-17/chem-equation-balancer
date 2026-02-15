@@ -56,144 +56,127 @@ def check_parentheses(formula):
             stack.pop()
     return len(stack) == 0
 
-def parse_equation(equation):
-    if "->" not in equation:
-        raise ValueError("equation must contain '->'")
-
-    left, right = equation.split("->")
-
-    reactants = [c.strip() for c in left.split("+")]
-    products = [c.strip() for c in right.split("+")]
-
-    if not reactants or not products:
+def parse_equation(reactants, products):
+    reactants_list = [c.strip() for c in reactants.split("+") if c.strip()]
+    products_list = [c.strip() for c in products.split("+") if c.strip()]
+    
+    if not reactants_list or not products_list:
         raise ValueError("equation must have reactants and products")
-
-    if any(c == "" for c in reactants + products):
-        raise ValueError("empty compound detected")
-
-    return reactants, products
+    
+    return reactants_list, products_list
 
 def count_atoms(formula):
     if not check_parentheses(formula):
         raise ValueError(f"missing parentheses in {formula}")
-
+    
     stack = [{}]
     i = 0
-
+    
     while i < len(formula):
-
+        
         if formula[i] == "(":
             stack.append({})
             i += 1
-
+        
         elif formula[i] == ")":
             i += 1
             num = ""
             while i < len(formula) and formula[i].isdigit():
                 num += formula[i]
                 i += 1
-
+            
             multiplier = int(num) if num else 1
             top = stack.pop()
-
+            
             for element in top:
                 top[element] *= multiplier
-
+            
             for element, count in top.items():
                 stack[-1][element] = stack[-1].get(element, 0) + count
-
+        
         else:
             match = re.match(r"^([A-Z][a-z]?)(\d*)", formula[i:])
+            
             if not match:
                 raise ValueError(f"invalid formula structure in {formula}")
-
             element, num = match.groups()
-
+            
             if element not in VALID_ELEMENTS:
-                raise ValueError(f"invalid element symbol : {element}")
-
+                raise ValueError(f"invalid element symbol: {element}")
+            
             count = int(num) if num else 1
             stack[-1][element] = stack[-1].get(element, 0) + count
-
+            
             i += len(match.group(0))
-
+    
     return stack[0]
 
 def calculate_molar_mass(formula):
     atoms = count_atoms(formula)
-    total_mass = sum(ATOMIC_MASSES[element] * count for element, count in atoms.items())
-    return total_mass
+    return sum(ATOMIC_MASSES[element] * count for element, count in atoms.items())
 
-def balance_equation(equation):
-    reactants, products = parse_equation(equation)
-    compounds = reactants + products
-
+def balance_equation(reactants, products):
+    reactants_list, products_list = parse_equation(reactants, products)
+    compounds = reactants_list + products_list
     compound_atom_counts = [count_atoms(c) for c in compounds]
-
-    reactant_elements = set()
-    product_elements = set()
-
+    elements = set()
+    
     for i, compound in enumerate(compounds):
-        if i < len(reactants):
-            reactant_elements.update(compound_atom_counts[i].keys())
-        else:
-            product_elements.update(compound_atom_counts[i].keys())
-
-    if reactant_elements != product_elements:
-        raise ValueError(f"element mismatch!")
-
-    elements = list(reactant_elements)
-
-    if not elements:
-        raise ValueError("no valid elements detected")
-
+        elements.update(compound_atom_counts[i].keys())
+    
+    elements = list(elements)
     matrix = []
-
+    
     for element in elements:
         row = []
-
-        for i in range(len(reactants)):
+        for i in range(len(reactants_list)):
             row.append(compound_atom_counts[i].get(element, 0))
-
-        for i in range(len(reactants), len(compounds)):
+    
+        for i in range(len(reactants_list), len(compounds)):
             row.append(-compound_atom_counts[i].get(element, 0))
-
+    
         matrix.append(row)
-
+    
     m = Matrix(matrix)
     nullspace = m.nullspace()
-
+    
     if not nullspace:
         raise ValueError("can't be balanced - no solution :(")
-
+    
     coeffs = nullspace[0]
     lcm_val = lcm([term.q for term in coeffs])
     coeffs = coeffs * lcm_val
     coeffs = [int(c) for c in coeffs]
-
+    
     if all(c <= 0 for c in coeffs):
         coeffs = [-c for c in coeffs]
-
+    
     if any(c == 0 for c in coeffs):
         raise ValueError("can't be balanced - zero coefficient found :(")
-
+    
     result = []
-
+    
     for i, compound in enumerate(compounds):
         coefficient = coeffs[i]
         formatted = format_compound(compound)
+        result.append(f"{coefficient if coefficient != 1 else ''}{formatted}")
+    balanced_eq_str = " + ".join(result[:len(reactants_list)]) + " -> " + " + ".join(result[len(reactants_list):])
+    
+    return balanced_eq_str, coeffs, compounds
 
-        if coefficient == 1:
-            result.append(formatted)
+class SubscriptEntry(tk.Entry):
 
-        else:
-            result.append(f"{coefficient}{formatted}")
+    def __init__(self, *args, **kwargs):
+        tk.Entry.__init__(self, *args, **kwargs)
+        self.var = tk.StringVar()
+        self.config(textvariable=self.var)
+        self.var.trace_add("write", self.update_subscript)
 
-    return (
-        " + ".join(result[:len(reactants)])
-        + " -> "
-        + " + ".join(result[len(reactants):])
-    ), coeffs, compounds
+    def update_subscript(self, *args):
+        value = self.var.get()
+        new_value = value.translate(SUBSCRIPT_MAP)
+        if value != new_value:
+            self.var.set(new_value)
 
 class MainMenuGUI:
     def __init__(self, root):
@@ -201,24 +184,21 @@ class MainMenuGUI:
         self.root.title("🧪 chemistry toolkit 🧪")
         self.root.geometry("500x300")
         self.root.resizable(False, False)
-
+        
         tk.Label(root, text="🧪 chemistry toolkit 🧪", font=("Consolas", 18, "bold")).pack(pady=30)
         tk.Label(root, text="choose your tool:", font=("Consolas", 12)).pack(pady=10)
-
         btn_frame = tk.Frame(root)
         btn_frame.pack(pady=20)
-
+        
         tk.Button(btn_frame, text="equation balancer", font=("Consolas", 12), bg="#4CAF50", fg="white", width=30, height=2, command=self.open_balancer).pack(pady=10)
-
+        
         tk.Button(btn_frame, text="stoichiometry calculator", font=("Consolas", 12), bg="#FF9800", fg="white", width=30, height=2, command=self.open_stoichiometry).pack(pady=10)
-
+    
     def open_balancer(self):
-        balancer_window = tk.Toplevel(self.root)
-        ChemBalancerGUI(balancer_window)
-
+        ChemBalancerGUI(tk.Toplevel(self.root))
+    
     def open_stoichiometry(self):
-        stoich_window = tk.Toplevel(self.root)
-        StoichiometryGUI(stoich_window)
+        StoichiometryGUI(tk.Toplevel(self.root))
 
 class ChemBalancerGUI:
     def __init__(self, root):
@@ -226,40 +206,39 @@ class ChemBalancerGUI:
         self.root.title("🧪 equation balancer")
         self.root.geometry("650x250")
         self.root.resizable(False, False)
-
-        tk.Label(root, text="enter your unbalanced chemical equation!!", font=("Consolas", 12)).pack(pady=10)
-
+        
+        tk.Label(root, text="enter your unbalanced chemical equation:", font=("Consolas", 12)).pack(pady=10)
         input_frame = tk.Frame(root)
         input_frame.pack(pady=5)
-
+        
         react_frame = tk.Frame(input_frame)
         react_frame.grid(row=0, column=0, padx=10)
         tk.Label(react_frame, text="reactants", font=("Consolas", 10)).pack()
-        self.react_entry = tk.Entry(react_frame, font=("Consolas", 14), width=25)
+        self.react_entry = SubscriptEntry(react_frame, font=("Consolas", 14), width=25)
+        
         self.react_entry.pack()
-
+        
         tk.Label(input_frame, text="→", font=("Consolas", 20)).grid(row=0, column=1, padx=5)
-
+        
         prod_frame = tk.Frame(input_frame)
         prod_frame.grid(row=0, column=2, padx=10)
         tk.Label(prod_frame, text="products", font=("Consolas", 10)).pack()
-        self.prod_entry = tk.Entry(prod_frame, font=("Consolas", 14), width=25)
+        self.prod_entry = SubscriptEntry(prod_frame, font=("Consolas", 14), width=25)
         self.prod_entry.pack()
-
+        
         tk.Button(root, text="balance", font=("Consolas", 12), bg="#4CAF50", fg="white", command=self.balance).pack(pady=10)
-
+        
         self.output = tk.Label(root, text="", font=("Consolas", 14), fg="blue", wraplength=600)
         self.output.pack(pady=20)
-
+    
     def balance(self):
-        reactants = self.react_entry.get()
-        products = self.prod_entry.get()
-        if not reactants.strip() or not products.strip():
+        reactants = self.react_entry.get().strip()
+        products = self.prod_entry.get().strip()
+        if not reactants or not products:
             messagebox.showwarning("hey!", "you gotta enter both reactants and products!")
             return
         try:
-            equation = reactants + "->" + products
-            balanced, _, _ = balance_equation(equation)
+            balanced, _, _ = balance_equation(reactants, products)
             self.output.config(text=balanced)
         except Exception as e:
             messagebox.showerror("oops!", f"invalid equation :(\n{e}")
@@ -271,164 +250,144 @@ class StoichiometryGUI:
         self.root.title("🧪 stoichiometry calculator")
         self.root.geometry("700x550")
         self.root.resizable(False, False)
-
-        tk.Label(root, text="enter your unbalanced chemical equation!!", font=("Consolas", 12)).pack(pady=10)
-
+        tk.Label(root, text="enter your unbalanced chemical equation:", font=("Consolas", 12)).pack(pady=10)
         eq_frame = tk.Frame(root)
         eq_frame.pack(pady=5)
-
+    
         react_frame = tk.Frame(eq_frame)
         react_frame.grid(row=0, column=0, padx=10)
         tk.Label(react_frame, text="reactants", font=("Consolas", 10)).pack()
-        self.react_entry = tk.Entry(react_frame, font=("Consolas", 12), width=25)
+        self.react_entry = SubscriptEntry(react_frame, font=("Consolas", 12), width=25)
+    
         self.react_entry.pack()
-
+    
         tk.Label(eq_frame, text="→", font=("Consolas", 16)).grid(row=0, column=1, padx=5)
-
+    
         prod_frame = tk.Frame(eq_frame)
         prod_frame.grid(row=0, column=2, padx=10)
         tk.Label(prod_frame, text="products", font=("Consolas", 10)).pack()
-        self.prod_entry = tk.Entry(prod_frame, font=("Consolas", 12), width=25)
+        self.prod_entry = SubscriptEntry(prod_frame, font=("Consolas", 12), width=25)
         self.prod_entry.pack()
-
+    
         known_frame = tk.Frame(root)
         known_frame.pack(pady=15)
-
+    
         tk.Label(known_frame, text="known compound:", font=("Consolas", 10)).grid(row=0, column=0, padx=5)
         self.known_compound_var = tk.StringVar()
         self.known_compound_menu = tk.OptionMenu(known_frame, self.known_compound_var, "")
         self.known_compound_menu.config(font=("Consolas", 10), width=15)
         self.known_compound_menu.grid(row=0, column=1, padx=5)
-
+    
         amount_frame = tk.Frame(root)
         amount_frame.pack(pady=10)
-
+    
         tk.Label(amount_frame, text="amount:", font=("Consolas", 10)).grid(row=0, column=0, padx=5)
         self.amount_entry = tk.Entry(amount_frame, font=("Consolas", 12), width=15)
         self.amount_entry.grid(row=0, column=1, padx=5)
-
+    
         tk.Label(amount_frame, text="unit:", font=("Consolas", 10)).grid(row=0, column=2, padx=5)
         self.unit_var = tk.StringVar(value="grams")
-        unit_menu = tk.OptionMenu(amount_frame, self.unit_var, "grams", "moles")
-        unit_menu.config(font=("Consolas", 10), width=10)
-        unit_menu.grid(row=0, column=3, padx=5)
-
+        tk.OptionMenu(amount_frame, self.unit_var, "grams", "moles").grid(row=0, column=3, padx=5)
         unknown_frame = tk.Frame(root)
         unknown_frame.pack(pady=15)
-
+    
         tk.Label(unknown_frame, text="find amount of:", font=("Consolas", 10)).grid(row=0, column=0, padx=5)
         self.unknown_compound_var = tk.StringVar()
         self.unknown_compound_menu = tk.OptionMenu(unknown_frame, self.unknown_compound_var, "")
         self.unknown_compound_menu.config(font=("Consolas", 10), width=15)
         self.unknown_compound_menu.grid(row=0, column=1, padx=5)
-
+    
         tk.Label(unknown_frame, text="in:", font=("Consolas", 10)).grid(row=0, column=2, padx=5)
         self.output_unit_var = tk.StringVar(value="grams")
-        output_unit_menu = tk.OptionMenu(unknown_frame, self.output_unit_var, "grams", "moles")
-        output_unit_menu.config(font=("Consolas", 10), width=10)
-        output_unit_menu.grid(row=0, column=3, padx=5)
-
+        tk.OptionMenu(unknown_frame, self.output_unit_var, "grams", "moles").grid(row=0, column=3, padx=5)
         btn_frame = tk.Frame(root)
         btn_frame.pack(pady=10)
-
+    
         tk.Button(btn_frame, text="load equation", font=("Consolas", 11), bg="#FF9800", fg="white", command=self.load_equation).grid(row=0, column=0, padx=5)
-        
+    
         tk.Button(btn_frame, text="calculate", font=("Consolas", 11), bg="#2196F3", fg="white", command=self.calculate).grid(row=0, column=1, padx=5)
-
+    
         self.output = tk.Label(root, text="", font=("Consolas", 12), fg="blue", wraplength=650, justify="left")
         self.output.pack(pady=20)
-
+    
         self.balanced_eq = None
         self.coeffs = None
         self.compounds = None
-
+    
     def load_equation(self):
         reactants = self.react_entry.get().strip()
         products = self.prod_entry.get().strip()
-        
+    
         if not reactants or not products:
             messagebox.showwarning("hey!", "you gotta enter both reactants and products!")
             return
-        
+    
         try:
-            equation = reactants + "->" + products
-            self.balanced_eq, self.coeffs, self.compounds = balance_equation(equation)
-            
+            self.balanced_eq, self.coeffs, self.compounds = balance_equation(reactants, products)
             menu = self.known_compound_menu["menu"]
             menu.delete(0, "end")
-            for compound in self.compounds:
-                menu.add_command(label=format_compound(compound), command=lambda c=compound: self.known_compound_var.set(c))
-            
+    
             menu2 = self.unknown_compound_menu["menu"]
             menu2.delete(0, "end")
             for compound in self.compounds:
+                menu.add_command(label=format_compound(compound), command=lambda c=compound: self.known_compound_var.set(c))
                 menu2.add_command(label=format_compound(compound), command=lambda c=compound: self.unknown_compound_var.set(c))
-            
+    
             if self.compounds:
                 self.known_compound_var.set(self.compounds[0])
                 self.unknown_compound_var.set(self.compounds[0])
-            
+    
             self.output.config(text=f"balanced equation: {self.balanced_eq}")
-            
+    
         except Exception as e:
             messagebox.showerror("oops!", f"invalid equation :(\n{e}")
             self.output.config(text="")
-
+    
     def calculate(self):
         if not self.balanced_eq:
             messagebox.showwarning("hey!", "load an equation first!")
             return
-        
+    
         known_compound = self.known_compound_var.get()
         unknown_compound = self.unknown_compound_var.get()
-        
+    
         if not known_compound or not unknown_compound:
             messagebox.showwarning("hey!", "select both compounds!")
             return
-        
+    
         try:
             amount = float(self.amount_entry.get())
         except ValueError:
             messagebox.showerror("oops!", "enter a valid number for amount!")
             return
-        
+    
         try:
             known_idx = self.compounds.index(known_compound)
             unknown_idx = self.compounds.index(unknown_compound)
-            
+    
             known_coeff = self.coeffs[known_idx]
             unknown_coeff = self.coeffs[unknown_idx]
-            
+    
             known_mm = calculate_molar_mass(known_compound)
             unknown_mm = calculate_molar_mass(unknown_compound)
-            
-            if self.unit_var.get() == "grams":
-                known_moles = amount / known_mm
-            else:
-                known_moles = amount
-            
+            known_moles = amount / known_mm if self.unit_var.get() == "grams" else amount
             unknown_moles = known_moles * (unknown_coeff / known_coeff)
-            
-            if self.output_unit_var.get() == "grams":
-                result = unknown_moles * unknown_mm
-                unit = "g"
-            else:
-                result = unknown_moles
-                unit = "mol"
-            
+            result = unknown_moles * unknown_mm if self.output_unit_var.get() == "grams" else unknown_moles
+            unit = "g" if self.output_unit_var.get() == "grams" else "mol"
             output_text = f"balanced equation: {self.balanced_eq}\n\n"
             output_text += f"given: {amount} {self.unit_var.get()} of {format_compound(known_compound)}\n"
             output_text += f"molar mass of {format_compound(known_compound)}: {known_mm:.2f} g/mol\n"
             output_text += f"molar mass of {format_compound(unknown_compound)}: {unknown_mm:.2f} g/mol\n\n"
             output_text += f"result: {result:.4f} {unit} of {format_compound(unknown_compound)}"
-            
+    
             self.output.config(text=output_text)
-            
+    
         except Exception as e:
             messagebox.showerror("oops!", f"calculation error :(\n{e}")
+
 def main():
     root = tk.Tk()
-    app = MainMenuGUI(root)
+    MainMenuGUI(root)
     root.mainloop()
 
 if __name__ == "__main__":
