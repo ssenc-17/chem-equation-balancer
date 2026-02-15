@@ -1,4 +1,6 @@
 import re
+import tkinter as tk
+from tkinter import messagebox
 from sympy import Matrix, lcm
 
 SUBSCRIPT_MAP = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
@@ -25,19 +27,6 @@ def check_parentheses(formula):
                 return False
             stack.pop()
     return len(stack) == 0
-
-def main():
-    equation = input("enter your unbalanced chemical equation!! ")
-
-    try:
-        balanced = balance_equation(equation)
-        print("\nbalanced equation!")
-        print(balanced)
-
-    except Exception as e:
-        print("\ninvalid equation :(")
-        print(e)
-
 
 def parse_equation(equation):
     if "->" not in equation:
@@ -173,5 +162,35 @@ def balance_equation(equation):
         + " + ".join(result[len(reactants):])
     )
 
+class ChemBalancerGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🧪 Chemical Equation Balancer")
+        self.root.geometry("600x300")
+        self.root.resizable(False, False)
+
+        tk.Label(root, text="enter your unbalanced chemical equation!!", font=("Consolas", 12)).pack(pady=10)
+        self.entry = tk.Entry(root, font=("Consolas", 14), width=50)
+        self.entry.pack(pady=5)
+        
+        tk.Button(root, text="Balance", font=("Consolas", 12), bg="#4CAF50", fg="white", command=self.balance).pack(pady=10)
+        
+        self.output = tk.Label(root, text="", font=("Consolas", 14), fg="blue", wraplength=550)
+        self.output.pack(pady=20)
+
+    def balance(self):
+        equation = self.entry.get()
+        if not equation.strip():
+            messagebox.showwarning("oops!", "hey! you gotta type an equation first!!")
+            return
+        try:
+            balanced = balance_equation(equation)
+            self.output.config(text=balanced)
+        except Exception as e:
+            messagebox.showerror("oops!", f"oops! invalid equation :(\n{e}")
+            self.output.config(text="")
+
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    app = ChemBalancerGUI(root)
+    root.mainloop()
